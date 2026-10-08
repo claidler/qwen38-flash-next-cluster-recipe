@@ -1,0 +1,7 @@
+# runtime data the kit creates — never tracked
+cluster.env
+cache/
+models/
+*.bak*
+__pycache__/
+*.pyc
