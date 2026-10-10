@@ -14,9 +14,12 @@ server:
                                                       # features documented in README (all default-off).
   cpuset: "5-9,15-19"                           # the GB10's 10 Cortex-X925 3.9GHz cores (0-4,10-14 are
                                                 # 2.8GHz A725) — measured +2-3% at every concurrency
-  model: claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE   # abliterated body with repacked NVFP4 lm_head, ~98G:
-                                                # no refusals, NO guardrails — research / red-teaming / private use behind your
-                                                # own moderation. Public on Hugging Face.
+  model: claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-LMHead-NVFP4   # non-abliterated body with repacked NVFP4 lm_head, ~101G:
+                                                # normal refusal behaviour. Public on Hugging Face.
+                                                # For the abliterated body (no refusals, NO guardrails — research / red-teaming /
+                                                # private use behind your own moderation) swap to:
+                                                #   claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4
+                                                # Only ever change `model:` — keep served-model-name so client configs survive swaps.
   port: 8000                                    # OpenAI API on the head box
   host: 0.0.0.0                               # the cluster runs on host networking — 127.0.0.1 keeps the API
                                                 # local; set 0.0.0.0 to expose it on the LAN
@@ -59,7 +62,8 @@ env:
   # "window":48,"promote":[60,45],"demote":[25,15]} — the image hot-reloads it, no restart needed.
 
 vllm:
-  served-model-name: claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4
+  served-model-name: qwen-3.8-flash-next        # generic on purpose — identical across ablit/non-ablit model swaps, so
+                                                # clients never reconfigure (changing this per-checkpoint is how cutovers 404)
   engram-config: '{"cpu_offload": false}'      # vLLM 0.30 defaults to keeping the n-gram table in pinned host memory; this
                                                 # image serves it from the GPU (the layout every number was measured on)
   gdn-prefill-backend: flashinfer               # +5 % prefill over triton from 8k to 256k tokens, same decode speed
