@@ -14,7 +14,7 @@ server:
                                                       # features documented in README (all default-off).
   cpuset: "5-9,15-19"                           # the GB10's 10 Cortex-X925 3.9GHz cores (0-4,10-14 are
                                                 # 2.8GHz A725) — measured +2-3% at every concurrency
-  model: claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4   # abliterated body with repacked NVFP4 lm_head, ~98G:
+  model: claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE   # abliterated body with repacked NVFP4 lm_head, ~98G:
                                                 # no refusals, NO guardrails — research / red-teaming / private use behind your
                                                 # own moderation. Public on Hugging Face.
   port: 8000                                    # OpenAI API on the head box
