@@ -14,11 +14,12 @@ server:
                                                       # features documented in README (all default-off).
   cpuset: "5-9,15-19"                           # the GB10's 10 Cortex-X925 3.9GHz cores (0-4,10-14 are
                                                 # 2.8GHz A725) — measured +2-3% at every concurrency
-  model: claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-LMHead-NVFP4   # non-abliterated body with repacked NVFP4 lm_head, ~101G:
+  model: claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-QAD-LMHead-NVFP4-GDNMSE   # non-abliterated body with repacked NVFP4 lm_head + retrained
+                                              # GDN-MSE MTP drafter (+8.6% decode), ~99G:
                                                 # normal refusal behaviour. Public on Hugging Face.
                                                 # For the abliterated body (no refusals, NO guardrails — research / red-teaming /
                                                 # private use behind your own moderation) swap to:
-                                                #   claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4
+                                                #   claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE
                                                 # Only ever change `model:` — keep served-model-name so client configs survive swaps.
   port: 8000                                    # OpenAI API on the head box
   host: 0.0.0.0                               # the cluster runs on host networking — 127.0.0.1 keeps the API

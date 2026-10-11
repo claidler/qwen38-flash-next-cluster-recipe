@@ -2,11 +2,11 @@
 
 ### Two-node DGX Spark cluster recipe for Qwen3.8-Flash-Next NVFP4-QAD (`cjjlaidler/qwen38-flash-next-cluster-vllm:v1`)
 
-Serves [`claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-LMHead-NVFP4`](https://huggingface.co/claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-LMHead-NVFP4) (the non-abliterated QAD body with NVFP4 PLE embedding table and repacked NVFP4 output head — normal refusal behaviour). For the abliterated body (no refusals, no guardrails — research / red-teaming / private use behind your own moderation), swap `model:` in `recipe.yaml` to [`claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4`](https://huggingface.co/claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4).
+Serves [`claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-QAD-LMHead-NVFP4-GDNMSE`](https://huggingface.co/claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-QAD-LMHead-NVFP4-GDNMSE) (the non-abliterated QAD body with NVFP4 PLE embedding table and repacked NVFP4 output head + the retrained GDN-MSE MTP drafter — normal refusal behaviour, +8.6% decode). For the abliterated body (no refusals, no guardrails — research / red-teaming / private use behind your own moderation), swap `model:` in `recipe.yaml` to [`claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE`](https://huggingface.co/claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE).
 
 Two rules for model swaps:
 - **Only ever change `model:`** — leave `served-model-name:` (`qwen-3.8-flash-next`) alone so client configs survive the swap. Changing the served name per-checkpoint is how cutovers 404.
-- **The non-abliterated body ships CSF-encoded expert scales** (`weight_scale_encoding: csf` — every routed-expert projection stores `weight_scale.nvfp4_csf_fixed`/`_exceptions` instead of a plain `weight_scale`). The `:v1` image's vLLM 0.30 loader has no CSF path, so the non-ablit checkpoint needs a CSF-capable build (e.g. the local-inference-lab image); the abliterated body uses direct scales and loads on `:v1` today.
+- **Both bodies use plain expert scales and load on `:v1` today** — the non-ablit model is built from the plain-scale `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` checkpoint. (The earlier `...-MXFP8-CSF-QAD-LMHead-NVFP4` twin was accidentally built from the CSF sibling base, which vLLM 0.30 cannot load; it is superseded.)
 
 Two DGX Sparks (GB10, 119 GB unified memory each), TP=2 over ConnectX RoCE v2 RDMA link. High-throughput speculative decoding (dynamic-depth MTP: drafts 3-5 tokens per step from per-batch acceptance, block verification).
 
@@ -82,7 +82,7 @@ Unified memory on the DGX Spark GB10 requires careful page handling to avoid dri
 
 All model serving configuration is managed in [`recipe.yaml`](recipe.yaml):
 - **Image:** `cjjlaidler/qwen38-flash-next-cluster-vllm:v1` (manifest digest `sha256:697d4364853312f3b50354020eb99cb12585228c9d16d1288261edb9631fa93b`, vLLM 0.30.0 + the b12x fabric stack)
-- **Model:** `claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-LMHead-NVFP4` (default, non-abliterated — needs a CSF-capable vLLM build) — or the abliterated variant `claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4` (loads on `:v1`)
+- **Model:** `claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-QAD-LMHead-NVFP4-GDNMSE` (default, non-abliterated, plain scales, loads on `:v1`) — or the abliterated variant `claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE`
 - **Served model name:** `qwen-3.8-flash-next` — generic and identical across model swaps; do not change it per-checkpoint
 - **CPUSet:** Cores `5-9,15-19` (GB10 Cortex-X925 3.9 GHz performance cores)
 - **KV Cache Memory:** `41000000000` (41 GB per box pinned)
