@@ -14,7 +14,7 @@ server:
                                                       # features documented in README (all default-off).
   cpuset: "5-9,15-19"                           # the GB10's 10 Cortex-X925 3.9GHz cores (0-4,10-14 are
                                                 # 2.8GHz A725) — measured +2-3% at every concurrency
-  model: claidler/Qwen3.8-Flash-Next-NVFP4-MXFP8-QAD-LMHead-NVFP4-GDNMSE   # non-abliterated body with repacked NVFP4 lm_head + retrained
+  model: claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4-GDNMSE   # abliterated body with repacked NVFP4 lm_head + retrained
                                               # GDN-MSE MTP drafter (+8.6% decode), ~99G:
                                                 # normal refusal behaviour. Public on Hugging Face.
                                                 # For the abliterated body (no refusals, NO guardrails — research / red-teaming /
@@ -63,7 +63,7 @@ env:
   # "window":48,"promote":[60,45],"demote":[25,15]} — the image hot-reloads it, no restart needed.
 
 vllm:
-  served-model-name: qwen-3.8-flash-next        # generic on purpose — identical across ablit/non-ablit model swaps, so
+  served-model-name: claidler/Qwen3.8-Flash-Next-Ablit-NVFP4-QAD-LMHead-NVFP4        # generic on purpose — identical across ablit/non-ablit model swaps, so
                                                 # clients never reconfigure (changing this per-checkpoint is how cutovers 404)
   engram-config: '{"cpu_offload": false}'      # vLLM 0.30 defaults to keeping the n-gram table in pinned host memory; this
                                                 # image serves it from the GPU (the layout every number was measured on)
