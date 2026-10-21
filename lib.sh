@@ -1,7 +1,7 @@
 # Shared helpers for setup.sh / run.sh / stop.sh / view.sh. Sourced; the scripts cd to the kit dir first.
 # Head = the machine you run these on (serves the API). Worker = the second Spark, reached over ssh.
 
-NAME="qwen38-qad"          # container name on BOTH boxes
+NAME="qwen38-flash-next-cluster"          # container name on BOTH boxes
 CLUSTER_ENV="cluster.env"                  # written by setup.sh: HEAD_*/WORKER_* (machine-specific, gitignored)
 
 # --- tiny recipe.yaml reader (two-level: section -> key: value; strips quotes/comments) ---------

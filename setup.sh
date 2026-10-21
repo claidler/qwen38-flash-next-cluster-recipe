@@ -14,7 +14,7 @@ cd "$(dirname "$0")"
 # shellcheck source=lib.sh
 source lib.sh
 
-echo "── 2-Spark cluster setup ──"
+echo "── myllmbox 2-Spark cluster setup ──"
 echo "This machine is the HEAD (runs the API). I need the SECOND Spark (the worker)."
 if [ -n "${1:-}" ]; then
   W="$1"
@@ -40,7 +40,7 @@ if ssh -o BatchMode=yes -o ConnectTimeout=8 "$W" true 2>/dev/null; then
   echo "✓ ssh $W (key already works — nothing installed)"
 else
   KEY=~/.ssh/id_ed25519
-  [ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -f "$KEY" -C "spark-cluster-$(hostname)"
+  [ -f "$KEY" ] || ssh-keygen -q -t ed25519 -N "" -f "$KEY" -C "myllmbox-cluster-$(hostname)"
   echo "· installing $KEY.pub on $W (its password, once):"
   ssh-copy-id -i "$KEY.pub" -o ConnectTimeout=8 "$W" >/dev/null
   ssh -o BatchMode=yes -o ConnectTimeout=8 -i "$KEY" "$W" true || { echo "✗ still cannot ssh to $W"; exit 1; }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tune-host.sh — the ONE host setting this kit recommends but never applies on its own (it needs root):
 #
-#   vm.compaction_proactiveness = 0      on both boxes, persisted in /etc/sysctl.d/99-spark-compaction.conf
+#   vm.compaction_proactiveness = 0      on both boxes, persisted in /etc/sysctl.d/99-myllmbox-compaction.conf
 #
 # WHY: the kernel's background page compactor migrates pages to build large contiguous blocks. On a DGX Spark the
 # GPU's memory IS ordinary system pages, so every migrated page is first unmapped from the GPU. On a serve pinned
@@ -11,14 +11,14 @@
 #
 # This script shows exactly what it will run, asks once, then lets sudo prompt the normal way on each box (the
 # password is typed into sudo's own prompt — never read, stored or passed by this script). Reversible:
-#   sudo sysctl -w vm.compaction_proactiveness=20 && sudo rm -f /etc/sysctl.d/99-spark-compaction.conf
+#   sudo sysctl -w vm.compaction_proactiveness=20 && sudo rm /etc/sysctl.d/99-myllmbox-compaction.conf
 set -euo pipefail
 cd "$(dirname "$0")"
 # shellcheck source=lib.sh
 source lib.sh
 load_cluster || { echo "✗ no cluster.env yet — run ./setup.sh (or ./run.sh) first"; exit 1; }
 
-CMD='printf "vm.compaction_proactiveness = 0\n" > /etc/sysctl.d/99-spark-compaction.conf && sysctl -q vm.compaction_proactiveness=0 && echo "  ✓ $(hostname): vm.compaction_proactiveness=$(cat /proc/sys/vm/compaction_proactiveness) (persisted)"'
+CMD='printf "vm.compaction_proactiveness = 0\n" > /etc/sysctl.d/99-myllmbox-compaction.conf && sysctl -q vm.compaction_proactiveness=0 && echo "  ✓ $(hostname): vm.compaction_proactiveness=$(cat /proc/sys/vm/compaction_proactiveness) (persisted)"'
 
 h=$(cat /proc/sys/vm/compaction_proactiveness 2>/dev/null || echo "?")
 w=$(ssh_w "cat /proc/sys/vm/compaction_proactiveness" 2>/dev/null || echo "?")

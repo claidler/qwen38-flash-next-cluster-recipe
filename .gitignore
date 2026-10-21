@@ -1,8 +1,4 @@
 # runtime data the kit creates — never tracked
 cluster.env
-cache/*
-!cache/mbx-depth.json
+cache/
 models/
-*.bak*
-__pycache__/
-*.pyc
