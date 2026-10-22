@@ -40,6 +40,7 @@ env:
   VLLM_DISABLED_KERNELS: FlashInferCutedslMxfp8LinearKernel,FlashInferTrtllmMxfp8LinearKernel,B12xMxfp8LinearKernel,DeepGemmMxfp8BmmLinearKernel,HummingMxfp8LinearKernel
   MBX_PLE_REPLICATE: "0"                        # half the n-gram table per box, on the GPU
   MBX_DEPTH_SYNCFREE: "1"
+  MBX_SKINNY_GEMM_SM12X: "1"
   MBX_DRAFT_FP8: "1"
   MALLOC_MMAP_THRESHOLD_: "65536"
   MALLOC_TRIM_THRESHOLD_: "131072"
@@ -89,7 +90,7 @@ vllm:
 # dynamic draft depth → cache/mbx-depth.json on both boxes (edit it to change it without a restart)
 mtp_depth:
   mode: dynamic                                 # dynamic | off = fixed K=7
-  min: 1                                        # lowest draft depth
+  min: 3                                        # lowest draft depth
   window: 48                                    # steps of history per decision (8–128)
   promote: [60, 45]                             # +2 / +1 depth above this % acceptance of the deepest position
   demote: [25, 15]                              # −1 / −2 depth below this %
