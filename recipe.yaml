@@ -104,7 +104,7 @@ vllm:
   enable-auto-tool-choice: true
   tool-call-parser: qwen3_xml
   reasoning-parser: qwen3
-  speculative-config: '{"method":"mtp","num_speculative_tokens":12,"rejection_sample_method":"block","draft_sample_method":"probabilistic"}'
+  speculative-config: '{"method":"mtp","num_speculative_tokens":7,"rejection_sample_method":"block","draft_sample_method":"probabilistic"}'
                                                       # up to 12 sampled drafts; the live ceiling (MBX_DEPTH_CEIL above) trims it by load
   use-replayssm: true
   async-scheduling: true
