@@ -41,10 +41,13 @@ env:
   MBX_MARLIN_CSF: "1"
   MBX_CSF_VISUAL_BF16: "0"
   MBX_MXFP8_A16: "0"                                # MXFP8 on b12x "auto", as NVIDIA ships it (v5.3.1+; needs the cluster image)
+                                                      # measured neutral at c=1 (70.9 vs 71.4, within noise) — kept because it is upstream default
   VLLM_DISABLED_KERNELS: FlashInferCutedslMxfp8LinearKernel,FlashInferTrtllmMxfp8LinearKernel,DeepGemmMxfp8BmmLinearKernel,HummingMxfp8LinearKernel
   MBX_PLE_REPLICATE: "0"                              # half the n-gram table per box, on the GPU
   MBX_PLE_PREFILL_CKPT: "1"                           # prefill checkpoints for the GDN layers + n-gram short conv: an agent turn
                                                       # resumes near the cached end instead of recomputing (~124 tokens, not ~12,500)
+                                                      # measured neutral on an ~8k agent turn (cold 3.69 s / warm 0.15 s vs 3.55 / 0.16 off);
+                                                      # the warm hit is prefix caching, not this — kept as upstream default
   MBX_DEPTH_SYNCFREE: "1"
   MBX_DEPTH_AGREE_INIT: "1"                           # both boxes agree at boot that the depth policy runs (TP=2 needs this)
   MBX_DEPTH_MODE: dynamic                             # dynamic draft depth | off = always num_speculative_tokens
@@ -54,15 +57,18 @@ env:
   MBX_DEPTH_DEMOTE: "25,15"                           # -1 / -2 depth below this %
   MBX_DEPTH_CEIL: "[2 -> 9, 4 -> 8, 6 -> 7, 12 -> 6, 14 -> 5]"
                                                       # deepest draft by live requests: 1 -> 12, 2-3 -> 9, 4-5 -> 8, 6-11 -> 7, 12-13 -> 6, 14+ -> 5
-  MBX_DRAFT_HEAD: "1"                                 # the drafter scores the full vocabulary with an NVFP4 copy of the output head (half per
+  MBX_DRAFT_HEAD: "1"                                 # measured: 71.4 with vs 66.8 without (+6.9%)
+                                                      # the drafter scores the full vocabulary with an NVFP4 copy of the output head (half per
                                                       # box); the model still verifies with the bf16 head. Our checkpoints ship a repacked NVFP4 lm_head
   MBX_SKINNY_GEMM_SM12X: "1"                          # GB10 CuTe-DSL skinny GEMM plans — INERT on the solo image, real on the cluster image
+                                                      # measured 2026-10-29: 71.4 with vs 48.5 without (+47% c=1) — the biggest lever
   # MBX_DRAFT_FP8: "1"                                # upstream deleted the FP8 drafter projections in v5.3.1 (acceptance 3.30 -> 3.48
                                                       # on their thinking-on prompt); the image default is "0", so we no longer set it
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True   # without it every bigger shape asks for a fresh segment — the unified-memory wall
   MALLOC_MMAP_THRESHOLD_: "65536"
   MALLOC_TRIM_THRESHOLD_: "131072"
   VLLM_ENABLE_ROCE_ALLREDUCE: "1"                     # one-shot RoCE all-reduce (b12x) up to 2MB, NCCL above
+                                                      # measured: 71.4 with vs 65.6 without (+8.8%); vLLM logs it as an unknown env var but the image honors it
   B12X_ROCE_CACHE_DIR: /cache/b12x-roce
   # RoCE v2 over the ConnectX link; interfaces, HCAs and the GID index are set per box by run.sh
   NCCL_IB_GID_INDEX: "3"                              # fallback only — run.sh probes the live value
@@ -105,7 +111,9 @@ vllm:
   tool-call-parser: qwen3_xml
   reasoning-parser: qwen3
   speculative-config: '{"method":"mtp","num_speculative_tokens":7,"rejection_sample_method":"block","draft_sample_method":"probabilistic"}'
-                                                      # up to 12 sampled drafts; the live ceiling (MBX_DEPTH_CEIL above) trims it by load
+                                                      # K=7: 71.4 c=1 vs 68.4 at K=12 (n=3); 30-cycle soak 64.0 vs 65.3 (within noise);
+                                                      # accepted/draft 0.216 vs 0.106 — K=12 buys no throughput for 2x the draft compute.
+                                                      # The live ceiling (MBX_DEPTH_CEIL above) trims it further by load
   use-replayssm: true
   async-scheduling: true
 
