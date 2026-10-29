@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# bisect-v54c.sh <label>:<recipe> [<label>:<recipe> ...]
+# Each experiment swaps recipe.yaml, clears stale swap, boots the TP=2 cluster with ./run.sh under a
+# deadline, captures the container's exit reason (docker inspect, before anything removes it) and a
+# 2 s host-memory timeline, then tears both boxes down. Always ends by restoring the v5.3 lane and
+# probing a real completion — unless an experiment ends healthy AND KEEP=1, in which case it is kept.
+# Detached by the caller (setsid nohup ... &); every attempt logs to bisect-<ts>.log.
+set -uo pipefail
+cd "$(dirname "$0")"
+# shellcheck source=lib.sh
+source lib.sh
+load_cluster
+TS=$(date +%Y%m%d-%H%M%S)
+LOG=$PWD/bisect-$TS.log
+exec >>"$LOG" 2>&1
+RECIPE_BAK=recipe.yaml.bak-v5.3-pre-v54-port-20261029-081840
+RUN_BAK=run.sh.bak-v5.3-lane
+DEADLINE=${DEADLINE:-900}
+KEEP=${KEEP:-0}
+
+say(){ echo "$(date -u '+%H:%M:%SZ') $*"; }
+
+probe(){   # a real completion, not just /health
+  local nonce="ZZYZX-$RANDOM" out code i
+  for i in 1 2 3; do
+    out=$(curl -s -m 240 -w '\nHTTP:%{http_code}' http://127.0.0.1:8000/v1/chat/completions \
+      -H 'content-type: application/json' \
+      -d "{\"model\":\"qwen-3.8-next\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly this string and nothing else: $nonce\"}],\"max_tokens\":64,\"temperature\":0,\"chat_template_kwargs\":{\"enable_thinking\":false}}" 2>&1)
+    if printf '%s' "$out" | grep -qi "$nonce"; then say "  probe $i ok ($nonce)"; return 0; fi
+    code=$(printf '%s' "$out" | sed -n 's/^HTTP:\([0-9]*\)$/\1/p')
+    say "  probe $i: no nonce (http ${code:-?}) body: $(printf '%s' "$out" | tr '\n' ' ' | head -c 300)"
+    sleep 10
+  done
+  return 1
+}
+
+# A watchdog on another host has launched ./run.sh over ssh before; two instances race on
+# `docker rm -f` + `docker run --name` and leave the cluster half-built.
+run_sh_pids(){ pgrep -f 'bash ./run.sh' 2>/dev/null || true; }
+wait_no_foreign(){
+  local t=0 pids
+  pids="$(run_sh_pids)"
+  while [ -n "$pids" ]; do
+    [ $((t % 6)) -eq 0 ] && say "· waiting for a foreign run.sh to finish (pids: $(echo $pids))"
+    sleep 10; t=$((t+10))
+    [ "$t" -ge 900 ] && { say "! foreign run.sh still running after 15 min — continuing anyway"; break; }
+    pids="$(run_sh_pids)"
+  done
+}
+
+swap_reset(){  # the previous lane can leave 10G of stale swap; reclaim it so the boot has full headroom
+  say "· swap reset (head: $(free -m | awk '/^Swap:/{print $3"MB used"}'))"
+  sudo -n swapoff -a 2>&1 && sudo -n swapon -a 2>&1
+  ssh_w "sudo -n swapoff -a && sudo -n swapon -a" 2>&1
+  say "  head swap now: $(free -m | awk '/^Swap:/{print $3"MB used, "$4"MB free"}')"
+}
+
+capture(){  # capture <label> — everything about how it died, BEFORE stop.sh removes the container
+  local label=$1
+  say "── $label: container state ──"
+  docker inspect "$NAME" --format 'head   status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} err={{.State.Error}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}' 2>&1
+  ssh_w "docker inspect '$NAME' --format 'worker status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} err={{.State.Error}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}'" 2>&1
+  say "── $label: head warmup progress at death ──"
+  docker logs --tail 600 "$NAME" 2>&1 | tr '\r' '\n' | grep -o 'Compiling CuTeDSL kernels: *[0-9]*%' | tail -1
+  say "── $label: head log tail ──"
+  docker logs --tail 40 "$NAME" 2>&1 | tr '\r' '\n' | grep -v 'Compiling CuTeDSL kernels:' | tail -25 | cut -c1-400
+  say "── $label: worker log tail ──"
+  ssh_w "docker logs --tail 40 '$NAME'" 2>&1 | tr '\r' '\n' | grep -v 'Compiling CuTeDSL kernels:' | tail -15 | cut -c1-400
+  say "── $label: head memory ──"
+  free -m
+  for f in /sys/fs/cgroup/system.slice/docker-*.scope/memory.stat; do
+    [ -f "$f" ] && { echo "cgroup $(basename "$(dirname "$f")"):"; grep -E '^(anon|file|swapcached)' "$f"; }
+  done 2>/dev/null
+  say "── $label: head kernel ──"
+  sudo -n dmesg -T 2>/dev/null | grep -iE 'oom|killed process|nvrm|xid|segfault|traps:' | tail -12
+  say "── $label: worker kernel ──"
+  ssh_w "sudo -n dmesg -T 2>/dev/null | grep -iE 'oom|killed process|nvrm|xid|segfault|traps:' | tail -12" 2>&1
+  say "── $label: docker journal ──"
+  journalctl -u docker --since "-20 min" --no-pager 2>/dev/null | grep -iE 'oom|kill|error|died|exit|shim' | tail -12
+}
+
+run_exp(){  # run_exp <label> <recipe> → run.sh's exit code (0 = healthy)
+  local label=$1 recipe=$2
+  say "=== experiment $label ← $recipe"
+  cp -f "$recipe" recipe.yaml
+  local memf=$PWD/bisect-mem-$label-$TS.log
+  ( while :; do
+      printf '%s ' "$(date -u +%H:%M:%S)"
+      free -m | awk '/^Mem:/{printf "used=%s free=%s avail=%s ",$3,$4,$7} /^Swap:/{printf "swapused=%s ",$3}'
+      printf 'cgroup=%s ' "$(cat /sys/fs/cgroup/system.slice/docker-*.scope/memory.current 2>/dev/null | head -1)"
+      echo
+      sleep 2
+    done ) >"$memf" 2>&1 &
+  local smp=$!
+  wait_no_foreign
+  swap_reset
+  local t0; t0=$(date +%s)
+  timeout "$DEADLINE" ./run.sh
+  local rc=$? dt=$(( $(date +%s) - t0 ))
+  kill "$smp" 2>/dev/null; wait "$smp" 2>/dev/null
+  say "$label: run.sh rc=$rc after ${dt}s · memory timeline $(basename "$memf")"
+  awk '{for(i=1;i<=NF;i++){if($i~/^used=/){gsub(/used=/,"",$i); if($i+0>m)m=$i+0}}} END{print "  peak used "m" MB over "NR*2"s"}' "$memf" 2>/dev/null
+  if [ "$rc" = 0 ]; then
+    say "── $label: healthy; last 15 log lines ──"
+    docker logs --tail 400 "$NAME" 2>&1 | tr '\r' '\n' | grep -vE 'Compiling CuTeDSL|Capturing CUDA' | tail -15 | cut -c1-300
+    return 0          # leave it running: the caller probes it and may keep it
+  fi
+  capture "$label"
+  ./stop.sh || true
+  wait_mem 100 180 || true
+  return "$rc"
+}
+
+revert(){
+  say "REVERT to the v5.3 lane"
+  ./stop.sh || true
+  cp -f "$RECIPE_BAK" recipe.yaml
+  cp -f "$RUN_BAK" run.sh
+  wait_no_foreign
+  swap_reset
+  if timeout 1200 ./run.sh && probe; then say "v5.3 lane is back and serving"; else say "v5.3 lane ALSO unhealthy — needs a human"; fi
+}
+
+wait_no_foreign
+say "bisect start · deadline ${DEADLINE}s/experiment · keep=$KEEP"
+for spec in "$@"; do
+  label=${spec%%:*}; recipe=${spec#*:}
+  if run_exp "$label" "$recipe"; then
+    if probe; then
+      if [ "$KEEP" = 1 ]; then
+        say "=== $label is healthy and serving — KEEPING it (no revert)"
+        exit 0
+      fi
+      say "=== $label is healthy and serving — will revert to v5.3 as instructed"
+    else
+      say "=== $label: run.sh healthy but the completion probe failed"
+    fi
+    break
+  fi
+done
+revert
+say "bisect finished"

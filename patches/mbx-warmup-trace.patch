@@ -1,0 +1,48 @@
+--- a/model_executor/warmup/cutedsl_warmup.py
++++ b/model_executor/warmup/cutedsl_warmup.py
+@@ -81,12 +81,43 @@
+     compile_units: Iterable[CuTeDSLCompileUnit],
+ ) -> int:
+     compiled = 0
++    units = list(compile_units)
++    total = len(units)
+     if is_global_first_rank():
+-        compile_units = tqdm(compile_units, desc="Compiling CuTeDSL kernels")
++        units = tqdm(units, desc="Compiling CuTeDSL kernels")
++
++    def _mbx_mem() -> str:
++        # MBX bisection trace: what the compiler costs, unit by unit.
++        import os
++        gpu = "gpu_free=?"
++        try:
++            free, _tot = torch.cuda.mem_get_info()
++            gpu = f"gpu_free={free / 2**30:.2f}G"
++        except Exception:
++            pass
++        rss = avail = swapfree = 0.0
++        try:
++            for line in open("/proc/self/status"):
++                if line.startswith("VmRSS:"):
++                    rss = int(line.split()[1]) / 1024
++            mi = {}
++            for line in open("/proc/meminfo"):
++                k, v = line.split(":", 1)
++                mi[k] = int(v.split()[0])
++            avail = mi.get("MemAvailable", 0) / 2**20
++            swapfree = mi.get("SwapFree", 0) / 2**20
++        except Exception:
++            pass
++        return f"{gpu} rss={rss:.0f}M avail={avail:.1f}G swapfree={swapfree:.1f}G"
++
+     with torch.inference_mode():
+-        for unit in compile_units:
++        for i, unit in enumerate(units, 1):
++            print(f"MBXWARM {i}/{total} start {unit.name!r} key={unit.key!r} {_mbx_mem()}",
++                  file=__import__("sys").stderr, flush=True)
+             unit.compile()
+             compiled += 1
++            print(f"MBXWARM {i}/{total} done {_mbx_mem()}",
++                  file=__import__("sys").stderr, flush=True)
+         torch.accelerator.synchronize()
+     return compiled
+ 

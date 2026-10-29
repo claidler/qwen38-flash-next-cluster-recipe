@@ -2,3 +2,10 @@
 cluster.env
 cache/
 models/
+
+# boot/bench/cutover noise from the v5.4 port (the conclusions live in REPORT-v5.4-lane.md)
+*.log
+*.jsonl
+*.jsonl.summary
+*.out
+cache-*/
