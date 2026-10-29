@@ -202,14 +202,11 @@ for side in head worker; do
   c="docker run --rm --entrypoint rm -v '$CACHE_ABS:/c' '$IMAGE' -rf /c/vllm-cache/flashinfer_autotune_cache"
   if [ $side = head ]; then sh -c "$c"; else ssh_w "$c"; fi
 done
-# dynamic draft depth (recipe.yaml mtp_depth; absent or mode: off = fixed K) → cache/mbx-depth.json on BOTH boxes (ranks must agree)
-lst() { printf '%s' "$1" | tr -d '[] '; }
-MD_MODE="$(rkey mtp_depth mode)"; MD_MIN="$(rkey mtp_depth min)"; MD_WIN="$(rkey mtp_depth window)"
-MD_UP="$(lst "$(rkey mtp_depth promote)")"; MD_DN="$(lst "$(rkey mtp_depth demote)")"; MD_LOG="$(rkey mtp_depth log)"
-MDJ="$(printf '{"mode": "%s", "min": %s, "window": %s, "promote": [%s], "demote": [%s], "log": %s}' \
-  "${MD_MODE:-off}" "${MD_MIN:-3}" "${MD_WIN:-48}" "${MD_UP:-60,45}" "${MD_DN:-25,15}" "${MD_LOG:-false}")"
-printf '%s\n' "$MDJ" > "$CACHE_ABS/mbx-depth.json"; printf '%s\n' "$MDJ" | ssh_w "cat > '$CACHE_ABS/mbx-depth.json'"
-[ "${MD_MODE:-off}" = dynamic ] && echo "· draft depth: dynamic (min ${MD_MIN:-3}) — cache/mbx-depth.json, same on both boxes"
+# Draft depth is env-driven in v5.4 (MBX_DEPTH_* above; the engine prints its own
+# "mbx depth: dynamic ..." line at boot). v5.3 read cache/mbx-depth.json; the v5.4 image has no
+# reader for it (grep over /opt /usr/local/lib finds no reference), so writing it only leaves a
+# stale file that a rollback would silently pick up. Do not write it.
+[ "$(rkey env MBX_DEPTH_MODE)" = dynamic ] && echo "· draft depth: dynamic, ceiling $(rkey env MBX_DEPTH_CEIL) (recipe.yaml env)"
 wait_mem 100 120 || exit 1
 evict_cache "$MODEL_DIR"
 echo "· starting head (rank 0) — API on $HOST:$PORT once healthy (~6 min with the weights present, ~15 min on the first boot)"
