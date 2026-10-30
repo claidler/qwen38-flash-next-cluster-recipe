@@ -30,6 +30,39 @@ ssh_w "mkdir -p '$MODELS_ABS' '$CACHE_ABS'"
 echo "· image $IMAGE — head"; docker pull -q "$IMAGE" >/dev/null || docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "✗ cannot pull $IMAGE"; exit 1; }
 echo "· image $IMAGE — worker"; ssh_w "docker pull -q '$IMAGE' >/dev/null || docker image inspect '$IMAGE' >/dev/null 2>&1" || { echo "✗ worker cannot pull $IMAGE"; exit 1; }
 
+# 0b. hardware preflight — the GB10 low-power latch (~660 MHz / ~15 W, throttle reason 0x0, survives reboot,
+#     -lgc silently ignored) makes boots ~3x slower and halves throughput while looking like a recipe crash
+#     (2026-10-29: CuTeDSL warmup died at 39/52 = the latch, not the image). Quick gate: idle SM clock
+#     (healthy idles at boost ~2.4 GHz on this driver; latched sits ~660 MHz). A low reading is confirmed with
+#     the 45 s bf16 burn (gb10-check.py in this repo, run in a throwaway container) before aborting.
+gb10_preflight() {  # <head|worker>
+  local side=$1 clk drv
+  if [ "$side" = head ]; then
+    clk=$(nvidia-smi --query-gpu=clocks.sm --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d '[:space:]')
+    drv=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
+  else
+    clk=$(ssh_w "nvidia-smi --query-gpu=clocks.sm --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d '[:space:]'")
+    drv=$(ssh_w "nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1")
+  fi
+  echo "· $side: driver ${drv:-?} · idle SM clock ${clk:-?} MHz"
+  case "${clk:-}" in ''|*[!0-9]*) echo "  ⚠ $side: cannot read clocks — skipping the latch gate"; return 0;; esac
+  [ "$clk" -ge 1400 ] && return 0
+  echo "  ⚠ $side: idle SM clock ${clk} MHz looks LATCHED — confirming with the 45 s bf16 burn"
+  local burn
+  if [ "$side" = head ]; then
+    burn=$(docker run --rm --gpus all -v "$PWD/gb10-check.py:/gb10-check.py:ro" --entrypoint python3 "$IMAGE" /gb10-check.py 2>/dev/null | tail -2)
+  else
+    burn=$(ssh_w "docker run --rm --gpus all -v '$PWD/gb10-check.py:/gb10-check.py:ro' --entrypoint python3 '$IMAGE' /gb10-check.py 2>/dev/null | tail -2")
+  fi
+  echo "$burn" | sed 's/^/  /'
+  if echo "$burn" | grep -q HEALTHY; then return 0; fi
+  echo "✗ $side is in the GB10 low-power latch — do NOT boot yet. Full power drain: unplug wall + brick + unit"
+  echo "  for >= 5 min, reconnect wall -> brick -> unit, then rerun ./run.sh (a plain reboot does not clear it)."
+  return 1
+}
+gb10_preflight head || exit 1
+gb10_preflight worker || exit 1
+
 # 2. weights: ~102G, resumable — download on the head, then sync to the worker at the SAME path
 # "complete" = the index is there AND no partial blob is left behind by an interrupted download (huggingface_hub keeps
 # them under .cache/huggingface/download/*.incomplete and resumes them) — the index lands early, so it alone proves nothing.
