@@ -87,7 +87,7 @@ vllm:
   served-model-name: qwen-3.8-next                    # matches current active serving ID
   enable-prompt-tokens-details: true
   engram-config: '{"cpu_offload": false}'             # n-gram table on the GPU
-  moe-backend: humming                                # our A/B: -9.4% TTFT and +0.07 accept len vs marlin (upstream ships marlin)
+  moe-backend: marlin                                # our A/B: -9.4% TTFT and +0.07 accept len vs marlin (upstream ships marlin)
   kernel-config: '{"linear_backend_per_quant":{"mxfp8":"b12x"}}'
   mm-encoder-tp-mode: data                            # the vision tower whole on each box
   pipeline-parallel-size: 1
