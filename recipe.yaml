@@ -110,7 +110,7 @@ vllm:
   enable-auto-tool-choice: true
   tool-call-parser: qwen3_xml
   reasoning-parser: qwen3
-  speculative-config: '{"method":"mtp","num_speculative_tokens":6,"rejection_sample_method":"block","draft_sample_method":"probabilistic"}'
+  speculative-config: '{"method":"mtp","num_speculative_tokens":8,"rejection_sample_method":"block","draft_sample_method":"probabilistic"}'
                                                       # K=7: 71.4 c=1 vs 68.4 at K=12 (n=3); 30-cycle soak 64.0 vs 65.3 (within noise);
                                                       # accepted/draft 0.216 vs 0.106 — K=12 buys no throughput for 2x the draft compute.
                                                       # The live ceiling (MBX_DEPTH_CEIL above) trims it further by load
