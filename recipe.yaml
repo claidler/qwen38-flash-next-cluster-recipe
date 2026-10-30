@@ -105,7 +105,7 @@ vllm:
   block-size: 3456                                    # a multiple of 16 (the attention ring at K=12) AND of 64 (the prefill-checkpoint grid)
   prefix-match-unit: 64                               # cache hits every 64 tokens — this is what makes resumed agent turns cheap
   max-num-seqs: 32                                    # upstream v5.4: all 32 seats ran concurrently through the whole test set
-  max-num-batched-tokens: 8192                        # also the image-input encoder budget
+  max-num-batched-tokens: 16384                        # also the image-input encoder budget
   enable-prefix-caching: true
   enable-auto-tool-choice: true
   tool-call-parser: qwen3_xml
