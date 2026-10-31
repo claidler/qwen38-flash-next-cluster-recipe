@@ -118,6 +118,23 @@ Next-round candidates found in the image's env surface: `VLLM_ROCE_ALLREDUCE_MAX
 | ncclstripe (MERGE_NICS=0, QPS=4, SPLIT=1) | 74.9 | 38.2 | 36.6 s | 3.88 s | — | not promoted (within noise; keep MERGE_NICS=1) |
 | depthmin2 (MBX_DEPTH_MIN 3→2) | 70.8 | 37.0 | 36.9 s | 3.93 s | 18/18 med 65.2 | not promoted (−2.5% c=1) |
 
+## Sweep 5/6 (2026-10-31, GitHub-sweep queue; healthy fabric; base3: c=1 72.6, c=8 37.8, c=4 wall 36.5 s/TTFT 10.0, cold TTFT 3.93)
+
+RoCE gate first: `ib_write_bw` both f0 HCAs = **13.3 GB/s each**, dmesg `insufficient power` count = **0** — healthy, benchmarks valid.
+
+| variant | result | verdict |
+|---|---|---|
+| eugr env block (NCCL_MAX_CTAS=8, BUFFSIZE=1MB, AOT, V2 runner, SSM DS, MXFP8_LM_HEAD) | boot FAILS — `CUDA error: misaligned address` | not portable from eugr's b12x image to ours |
+| eugr transport only (NCCL_MAX_CTAS=8, NCCL_BUFFSIZE=1MB) | boot FAILS — CUDA error | ruled out |
+| `VLLM_USE_V2_MODEL_RUNNER=1` alone | c=1 72.9, c=8 37.3, c=4 36.5 s | neutral — not promoted |
+| `VLLM_USE_AOT_COMPILE=1` alone | c=1 72.6, c=8 37.2, c=4 38.0 s | neutral — not promoted |
+| `VLLM_SSM_CONV_STATE_LAYOUT=DS` alone | c=1 70.4 (−3%), c=8 37.8 | not promoted |
+| `--api-server-count 2` | boot FAILS — `cannot be used with --headless` (worker) | ruled out for TP=2 |
+| DFlash2 drafter (method dflash, incoai 0.6B, K=8) | boot FAILS — `NotImplementedError: Qwen4Exp speculative decoding supports only native MTP and linear n-gram` | ruled out on this model/image |
+| salient-data `skinny-gemm-rows` patch (QWEN38_SKINNY_FILL) via `server.patches` | patch APPLIES cleanly but head dies after model load (patch written for a different vLLM base) | ruled out on v5.4 |
+
+Audit notes: RecoverSSM (#58863) and NVFP4 draft lm_head are already live in v5.4 (boot logs show both). `VLLM_INDEXER_FP8` absent from image. GDN-MSE is already our checkpoint (`...-GDNMSE`). Remaining real upside per the sweep: checkpoint swaps (azampatti FP4-Local-AZ, hybrid48-uncensored — both need download + quality gauntlet) and ops hygiene only.
+
 ## Probe suite going forward
 
 `bench-qwen38.py` (c=1 + --concurrency), `ttft-qwen38.py` (8k cold/warm), **`prefill-qwen38.py` (NEW: cold prefill tok/s at ~13k/~52k + warm)**, `soak-qwen38.py`, `needle-gate-fixed.py`. Every A/B gate now: c=1 n≥3, c=8, 8k TTFT, 13k/52k prefill, 18-cycle soak; final promotion adds needle gate + 30-min soak.
