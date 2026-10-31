@@ -34,7 +34,16 @@ K sweep summary (c=1): K=5 68.9 · K=6 67.4 · **K=7 70.4** · K=8 68.9 · K=12 
 | soak median (512 tok) | 63.8 | 67.5 | marlin |
 | accepted/draft | 0.192 | 0.198 | tie |
 
-So the 10-28 "humming is the right kernel for GB10" intuition is real but narrow: **humming wins prefill/TTFT (+15% prefill tok/s, −0.4 s cold 8k TTFT), marlin wins decode at c=1 and decisively at c=4–8**. For an agent turn (~8k prompt + ≥1k output) the two roughly cancel at c=1 (18.2 s vs 18.2 s wall) and marlin pulls ahead with concurrency and longer outputs; humming only wins prefill-dominated turns (very long prompt, short output) — i.e. the long-context profile, which is out of scope. Hence marlin for the single-stream/c≤8 profile. For a TTFT-first profile, humming is the rollback:
+So the 10-28 "humming is the right kernel for GB10" intuition is real but narrow: **humming wins prefill/TTFT (+15% prefill tok/s, −0.4 s cold 8k TTFT), marlin wins decode at c=1 and decisively at c=4–8**.
+
+## Realistic-turn test (turn-c4.py): c=4, each turn a unique cold ~13k prompt, thinking-on, 1024 out
+
+| backend | median wall/turn | median TTFT | median decode/stream | aggregate decode |
+|---|---|---|---|---|
+| marlin | **37.4 s** | 10.0 s | **38.4** | **~156 tok/s** |
+| humming | 37.6 s | **9.1 s** | 36.5 | ~146 tok/s |
+
+**Overall verdict: marlin.** Turn wall-time is a wash at c=4 and marlin wins aggregate (+7%) and c=1/c=8 decode; humming's only edge is ~1 s of TTFT per cold turn, which matters only for prefill-dominated turns (very long prompt, short output) — the long-context profile, out of scope here. Lane left on marlin. For a TTFT-first profile, humming is the rollback:
 
 ```bash
 cp recipe.yaml.ab-marlin-* recipe.yaml   # humming
