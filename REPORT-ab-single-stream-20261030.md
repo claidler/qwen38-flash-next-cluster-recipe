@@ -107,6 +107,17 @@ Next-round candidates found in the image's env surface: `VLLM_ROCE_ALLREDUCE_MAX
 
 **run.sh fixes landed:** preflight burn file pushed to worker as /tmp/gb10chk.py (repo not mirrored there — empty burn caused false LATCHED abort); SIB_PROBE empty result no longer kills the boot under `set -e` (CX7 port without IPv4 now warns and stays on one rail).
 
+**Fabric root cause found & fixed (2026-10-31 ~12:00):** after the power events, the CX7 logged `insufficient power on the PCIe slot (27W)` and `ib_write_bw` measured only **~1.5 GB/s** (healthy: 22–24 GB/s per the playbook) — that degraded all c≥4/prefill numbers (sweep2 variants were all measured in this state; their relative verdicts vs base2 still hold). Moving the QSFP cables back to the **f0** ports + a plain reboot cleared the dmesg errors; ib_write_bw recovered to **13.3 GB/s** (4MB, 4 QP) and base3 re-measured at morning levels (c=1 72.6, c=8 37.8, c=4 wall 37.5/35.4 s, TTFT 10.1/10.0, cold 3.93 s, 52k prefill 3.2k tok/s). Power/extender unchanged. **Do not move the QSFP cables to the f1 sockets or power-cycle without a full drain — f0 + clean boot is the known-good state.** netplan/cluster.env back on f0 (`cluster.env.bak-f0-20261031` kept).
+
+## Sweep 4 (2026-10-31, HEALTHY fabric after f0+reboot fix; base3 = marlin/K7/8192: c=1 72.6, c=8 37.8, c=4 wall 37.5/35.4 s TTFT 10.1/10.0, cold TTFT 3.93, 52k prefill 3.2k, soak 18/18)
+
+| variant | c=1 | c=8 | c=4 wall | cold TTFT | soak | verdict |
+|---|---|---|---|---|---|---|
+| base3 | 72.6 | 37.8 | 36.5 s | 3.93 s | med 66-67 | reference |
+| `VLLM_ROCE_ALLREDUCE_MAX_SIZE: 8MB` (roce8m; log confirms "fallback above 8MB") | 71.0 | 38.0 | 36.5 s | 3.92 s | 18/18 med 67.5 | not promoted (c≤8 collectives already ≤2MB) |
+| ncclstripe (MERGE_NICS=0, QPS=4, SPLIT=1) | 74.9 | 38.2 | 36.6 s | 3.88 s | — | not promoted (within noise; keep MERGE_NICS=1) |
+| depthmin2 (MBX_DEPTH_MIN 3→2) | 70.8 | 37.0 | 36.9 s | 3.93 s | 18/18 med 65.2 | not promoted (−2.5% c=1) |
+
 ## Probe suite going forward
 
 `bench-qwen38.py` (c=1 + --concurrency), `ttft-qwen38.py` (8k cold/warm), **`prefill-qwen38.py` (NEW: cold prefill tok/s at ~13k/~52k + warm)**, `soak-qwen38.py`, `needle-gate-fixed.py`. Every A/B gate now: c=1 n≥3, c=8, 8k TTFT, 13k/52k prefill, 18-cycle soak; final promotion adds needle gate + 30-min soak.
