@@ -70,6 +70,18 @@ cp recipe.yaml.ab-marlin-* recipe.yaml   # humming
 - MBX_DEPTH_* micro-sweep, hybrid48-uncensored checkpoint swap (needs quality gauntlet; memory headroom not needed while long-ctx is out of scope).
 - Watch-only: v5.5 image / vLLM #53896 / b12x MoE (needs the SM121 guard fix) / DFlash2 drafter.
 
+## Flare ideas (sxuff/qwen38-flash-next-flare, X @filicroval 2116295184421888436) — A/B'd 2026-10-31
+
+Engine swap rejected (single-box Rust runtime, stock checkpoint, our 2-box numbers already 2–4× it; full assessment: `skills/dgx-spark-llm-inference/references/sxuff-flare-recipe-2026-10-31.md`). The two transferable ideas were A/B'd from the pristine base (marlin/K=7/8192):
+
+| variant | c=4 turn wall | c=4 TTFT | c=4 agg decode | c=8 /stream | soak | verdict |
+|---|---|---|---|---|---|---|
+| base (8192, K=7) | 37.4 s | 10.0 s | ~156 | 37.0–38.5 | 18/18 | reference |
+| max-num-batched-tokens 4096 ("prefill priority" analogue) | 38.7 s (+3.5%) | 12.3 s (worse) | ~158 | 37.5 | 18/18 med 66.3 | **not promoted** — smaller chunks hurt TTFT, Flare's priority-16 has no vLLM equivalent |
+| K=3 (their fixed-3-drafts) | boot FAILED (head died at startup, TCPStore broken pipe on rank1; no OOM, clocks healthy 2145 MHz) | — | — | — | — | **not promoted**; K=7 stands |
+
+Spec drafting at c=8 confirmed active on our lane (accepted/draft ≈ 0.2; capture sizes to 192 rows, depth ceiling trims instead of disabling) — the Flare "8-row graph limit" does not apply here. Greedy and mixed/chunked prefill already on. Lane restored to marlin/K=7/8192, health 200.
+
 ## Probe suite going forward
 
 `bench-qwen38.py` (c=1 + --concurrency), `ttft-qwen38.py` (8k cold/warm), **`prefill-qwen38.py` (NEW: cold prefill tok/s at ~13k/~52k + warm)**, `soak-qwen38.py`, `needle-gate-fixed.py`. Every A/B gate now: c=1 n≥3, c=8, 8k TTFT, 13k/52k prefill, 18-cycle soak; final promotion adds needle gate + 30-min soak.
