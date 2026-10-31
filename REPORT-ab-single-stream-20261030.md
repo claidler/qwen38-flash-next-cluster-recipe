@@ -82,6 +82,31 @@ Engine swap rejected (single-box Rust runtime, stock checkpoint, our 2-box numbe
 
 Spec drafting at c=8 confirmed active on our lane (accepted/draft ≈ 0.2; capture sizes to 192 rows, depth ceiling trims instead of disabling) — the Flare "8-row graph limit" does not apply here. Greedy and mixed/chunked prefill already on. Lane restored to marlin/K=7/8192, health 200.
 
+## Sweep 2 (2026-10-31, second round of knobs)
+
+| variant | result | verdict |
+|---|---|---|
+| `moe-backend: flashinfer_cutedsl` | boot FAILS (WorkerProc init error) at healthy clocks — same class as b12x: MoE backend incompatible with this model on TP=2 | **ruled out** |
+| fp8kv / depthmin2 / ncclstripe / prefix128 | not run — both GB10s latched at 208 MHz mid-sweep; run.sh preflight (added this session) aborted every boot with the LATCHED message instead of phantom-crashing | **blocked on hardware**, rerun after power drain |
+
+Next-round candidates found in the image's env surface: `VLLM_ROCE_ALLREDUCE_MAX_SIZE` (default 2MB — raise to route bigger c=8 collectives over RoCE instead of NCCL), `MBX_PLE_ASYNC*` / `MBX_FUSED_DRAFT` (untested), plus `flashinfer_cutedsl_batched`/`flashinfer_trtllm` MoE backends (likely same failure class as cutedsl).
+
+## Sweep 2 results (2026-10-31, on f1 QSFP ports after the power event; base re-measured same session — all variants ≈ base, NONE promoted)
+
+| variant | c=1 tok/s | c=8 /stream | c=4 wall / TTFT | cold 8k TTFT | soak | verdict |
+|---|---|---|---|---|---|---|
+| base2 (marlin/K7/8192, f1) | 69.7 | 33.1 | 46.0 s / 14.8 s | 5.79 s | 18/18 med 66.2 | reference (current env) |
+| fp8kv | 70.6 | 32.8 | 45.8 / 14.7 | 5.70 | 18/18 med 65.3 | not promoted |
+| depthmin2 | 69.6 | 32.8 | 47.1 / 14.8 | 5.77 | 18/18 med 64.4 | not promoted |
+| ncclstripe (MERGE_NICS=0, QPS=4, SPLIT=1) | 70.3 | 32.9 | 47.2 / 14.8 | 5.78 | 18/18 med 65.8 | not promoted |
+| prefix128 | 70.1 | 32.8 | 47.1 / 14.8 | 5.78 | 18/18 med 66.9 | not promoted |
+| cutedsl (earlier, healthy clocks) | boot FAILS | — | — | — | — | ruled out |
+| K=3 (earlier) | boot FAILED | — | — | — | — | ruled out |
+
+**Environmental regression since the 2026-10-31 morning power events:** same base config measured 2026-10-30/31 morning (f0 ports): c=8 37–38.5, c=4 wall 37.4 s / TTFT 10.0 s, cold TTFT 3.96 s, 52k prefill ~3110 tok/s. After the power events (QSFP reseated into **f1** ports; netplan+cluster.env switched f0→f1, backups `cluster.env.bak-f0-20261031`): c=8 33.1, c=4 wall 46 s / TTFT 14.8 s, cold TTFT 5.79 s, 52k prefill ~2190 tok/s. c=1 unchanged (~70). dmesg logs `insufficient power on the PCIe slot (27W)` ×4/box (power brick on an extender cable); PCIe link itself is full 32GT/s x4; GPU burn HEALTHY (91 TFLOPS) on both. **Fix: brick direct into the wall (no extender), full drain both boxes, then re-measure base.**
+
+**run.sh fixes landed:** preflight burn file pushed to worker as /tmp/gb10chk.py (repo not mirrored there — empty burn caused false LATCHED abort); SIB_PROBE empty result no longer kills the boot under `set -e` (CX7 port without IPv4 now warns and stays on one rail).
+
 ## Probe suite going forward
 
 `bench-qwen38.py` (c=1 + --concurrency), `ttft-qwen38.py` (8k cold/warm), **`prefill-qwen38.py` (NEW: cold prefill tok/s at ~13k/~52k + warm)**, `soak-qwen38.py`, `needle-gate-fixed.py`. Every A/B gate now: c=1 n≥3, c=8, 8k TTFT, 13k/52k prefill, 18-cycle soak; final promotion adds needle gate + 30-min soak.
