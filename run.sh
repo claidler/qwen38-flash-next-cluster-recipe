@@ -183,7 +183,7 @@ SIB_PROBE='for d in /sys/class/infiniband/*; do n=${d##*/}; [ "$n" = "$1" ] && c
   grep -q ACTIVE "$d/ports/1/state" 2>/dev/null || continue
   for nd in "$d"/device/net/*; do ip -4 -o addr show dev "${nd##*/}" 2>/dev/null | grep -q inet && { echo "$n"; exit 0; }; done; done'
 if [ "$(rkey server ib_links)" = 2 ] && [ "$HEAD_RDMA$WORKER_RDMA" = yesyes ] && [ -n "$HEAD_HCA" ] && [ -n "$WORKER_HCA" ]; then
-  HS="$(bash -c "$SIB_PROBE" _ "$HEAD_HCA")"; WS="$(ssh_w "bash -c $(printf '%q' "$SIB_PROBE") _ $(printf '%q' "$WORKER_HCA")")"
+  HS="$(bash -c "$SIB_PROBE" _ "$HEAD_HCA" || true)"; WS="$(ssh_w "bash -c $(printf '%q' "$SIB_PROBE") _ $(printf '%q' "$WORKER_HCA")" || true)"
   if [ -n "$HS" ] && [ -n "$WS" ]; then HEAD_HCA="$HEAD_HCA,$HS"; WORKER_HCA="$WORKER_HCA,$WS"; echo "· dual rail: head $HEAD_HCA · worker $WORKER_HCA"
   else echo "  ⚠ ib_links: 2 but no second active RDMA device with an IPv4 (head '${HS:-none}', worker '${WS:-none}') — staying on one"; fi
 fi
