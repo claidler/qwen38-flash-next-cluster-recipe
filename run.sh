@@ -18,7 +18,7 @@ fi
 load_cluster
 ssh_w true 2>/dev/null || { echo "✗ cannot reach the worker $WORKER — rerun ./setup.sh"; exit 1; }
 
-IMAGE="$(rkey server image)";   PORT="$(rkey server port)";   HOST="$(rkey server host)";  HOST="${HOST:-0.0.0.0}"
+IMAGE="$(rkey server image)";   PORT="$(rkey server port)";   HOST="$(rkey server host)";  HOST="${HOST:-127.0.0.1}"
 HF_REPO="$(rkey server model)"; MPORT="$(rkey server master_port)"; MPORT="${MPORT:-25000}"
 MODELS_DIR="$(rkey server models_dir)"; CACHE_DIR="$(rkey server cache_dir)"; CPUSET="$(rkey server cpuset)"
 mkdir -p "$MODELS_DIR" "$CACHE_DIR"
@@ -52,7 +52,7 @@ gb10_preflight() {  # <head|worker>
   if [ "$side" = head ]; then
     burn=$(docker run --rm --gpus all -v "$PWD/gb10-check.py:/gb10-check.py:ro" --entrypoint python3 "$IMAGE" /gb10-check.py 2>/dev/null | tail -2)
   else
-    burn=$(ssh_w "docker run --rm --gpus all -v '$PWD/gb10-check.py:/gb10-check.py:ro' --entrypoint python3 '$IMAGE' /gb10-check.py 2>/dev/null | tail -2")
+    burn=$(ssh_w "docker run --rm --gpus all -v /tmp/gb10chk.py:/gb10-check.py:ro --entrypoint python3 '$IMAGE' /gb10-check.py 2>/dev/null | tail -2")
   fi
   echo "$burn" | sed 's/^/  /'
   if echo "$burn" | grep -q HEALTHY; then return 0; fi
@@ -60,6 +60,7 @@ gb10_preflight() {  # <head|worker>
   echo "  for >= 5 min, reconnect wall -> brick -> unit, then rerun ./run.sh (a plain reboot does not clear it)."
   return 1
 }
+cat gb10-check.py | ssh_w "cat > /tmp/gb10chk.py"   # the repo path is not mirrored on the worker
 gb10_preflight head || exit 1
 gb10_preflight worker || exit 1
 
