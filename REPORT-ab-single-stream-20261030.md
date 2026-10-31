@@ -19,7 +19,22 @@ K sweep summary (c=1): K=5 68.9 · K=6 67.4 · **K=7 70.4** · K=8 68.9 · K=12 
 
 ## Decision
 
-**`moe-backend: marlin` is now live** (commit `bc57fc2`). It wins the target metric at c=1 (+4.7%, consistent with the 2026-10-28 moe-ab: 72.5 vs 71.9) and clearly at c=8 (+7.1%, ~300 agg tok/s). Cost: cold 8k TTFT 3.98 s vs 3.55 s (+0.43 s, warm identical at 0.15 s — prefix cache dominates warm turns), accepted/draft 0.190 vs 0.216. For the single-stream + 4–8 stream profile the decode win dominates; for a TTFT-first profile, humming is the rollback:
+**`moe-backend: marlin` is live** (commit `bc57fc2`, restored after the head-to-head). It wins the target metric at c=1 (+4.7%, consistent with the 2026-10-28 moe-ab: 72.5 vs 71.9) and clearly at c=8 (+7.1–10%, ~300–308 agg tok/s).
+
+## Prefill head-to-head (added after the fact — `prefill-qwen38.py`, same day, same harness, healthy clocks)
+
+| metric | humming | marlin | winner |
+|---|---|---|---|
+| prefill ~13k cold | 3624–3672 tok/s | ~3160 tok/s (rep1 1141 = first-cold JIT) | **humming +15%** |
+| prefill ~52k cold | ~3540 tok/s | ~3110 tok/s | **humming +14%** |
+| warm TTFT 13k / 52k | 0.17 / 0.24 s | 0.25 / 0.43 s | humming |
+| cold 8k TTFT | 3.58 s | 3.98 s | humming |
+| c=1 decode n=5 | 70.0 | **72.0** | **marlin +2.9%** |
+| c=8 /stream | 34.0 | **38.5** | **marlin +13%** |
+| soak median (512 tok) | 63.8 | 67.5 | marlin |
+| accepted/draft | 0.192 | 0.198 | tie |
+
+So the 10-28 "humming is the right kernel for GB10" intuition is real but narrow: **humming wins prefill/TTFT (+15% prefill tok/s, −0.4 s cold 8k TTFT), marlin wins decode at c=1 and decisively at c=4–8**. For an agent turn (~8k prompt + ≥1k output) the two roughly cancel at c=1 (18.2 s vs 18.2 s wall) and marlin pulls ahead with concurrency and longer outputs; humming only wins prefill-dominated turns (very long prompt, short output) — i.e. the long-context profile, which is out of scope. Hence marlin for the single-stream/c≤8 profile. For a TTFT-first profile, humming is the rollback:
 
 ```bash
 cp recipe.yaml.ab-marlin-* recipe.yaml   # humming
@@ -45,6 +60,10 @@ cp recipe.yaml.ab-marlin-* recipe.yaml   # humming
 - NCCL striping vs MERGE_NICS (matters above the 2 MB RoCE all-reduce threshold — c<=8 stays under it).
 - MBX_DEPTH_* micro-sweep, hybrid48-uncensored checkpoint swap (needs quality gauntlet; memory headroom not needed while long-ctx is out of scope).
 - Watch-only: v5.5 image / vLLM #53896 / b12x MoE (needs the SM121 guard fix) / DFlash2 drafter.
+
+## Probe suite going forward
+
+`bench-qwen38.py` (c=1 + --concurrency), `ttft-qwen38.py` (8k cold/warm), **`prefill-qwen38.py` (NEW: cold prefill tok/s at ~13k/~52k + warm)**, `soak-qwen38.py`, `needle-gate-fixed.py`. Every A/B gate now: c=1 n≥3, c=8, 8k TTFT, 13k/52k prefill, 18-cycle soak; final promotion adds needle gate + 30-min soak.
 
 ## Commits
 

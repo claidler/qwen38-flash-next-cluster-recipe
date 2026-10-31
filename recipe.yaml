@@ -87,7 +87,7 @@ vllm:
   served-model-name: qwen-3.8-next                    # matches current active serving ID
   enable-prompt-tokens-details: true
   engram-config: '{"cpu_offload": false}'             # n-gram table on the GPU
-  moe-backend: humming                                # promoted 2026-10-30: +4.7% c=1 / +7.1% c=8 vs humming (cold TTFT 3.98 vs 3.55 s, warm 0.15 same);
+  moe-backend: marlin                                # promoted 2026-10-30: +4.7% c=1 / +7.1% c=8 vs humming (cold TTFT 3.98 vs 3.55 s, warm 0.15 same);
                                                       # humming = one-line rollback, see recipe.yaml.ab-marlin-* and REPORT-ab-single-stream-20261030.md
   kernel-config: '{"linear_backend_per_quant":{"mxfp8":"b12x"}}'
   mm-encoder-tp-mode: data                            # the vision tower whole on each box
